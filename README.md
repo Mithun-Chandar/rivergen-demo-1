@@ -6,6 +6,20 @@ RiverGen is deterministic realtime architecture tooling. This demo makes every
 step of the realtime pipeline visible, testable, and provably correct,
 including what happens when something breaks.
 
+## One Repo, Two Runtimes
+
+This repository intentionally carries two runtime modes on the same branch:
+
+- Canonical full-stack mode: the real RiverGen demo with both `apps/api` and
+  `apps/web`, SQLite persistence, Socket.IO rooms, and full local verification.
+- Showcase mode: a deployment-only browser emulator used for cheap static
+  hosting on Vercel so people can see the demo without paying to host the full
+  backend.
+
+The source of truth remains the full-stack app. Showcase mode is only a runtime
+adapter layered on top of the same demo source so the public deployment stays
+portable while cloned local runs stay real.
+
 ## Repository links
 
 - Demo repository: https://github.com/Mithun-Chandar/rivergen-demo-1
@@ -44,18 +58,40 @@ Open the Vite URL printed in the terminal. On a clean machine it should be
 `http://localhost:5173`; if that port is occupied Vite will choose the next
 available port automatically.
 
+This is the canonical way to run the project. It starts the real API and the
+real web app together.
+
 ## Showcase deployment
 
-For static hosting such as Vercel, deploy the web app in emulator mode:
+For static hosting such as Vercel, deploy the web app in showcase mode:
 
 ```bash
-VITE_RUNTIME_MODE=emulator
+pnpm build:showcase
+```
+
+From the monorepo root, the web build output is written to `apps/web/dist`,
+not root `dist`. The included `vercel.json` already points Vercel at the
+correct output directory.
+
+If you configure the project manually in the Vercel dashboard, use:
+
+- Build Command: `pnpm build:showcase`
+- Output Directory: `apps/web/dist`
+
+For a local browser-only preview of the hosted slice, use:
+
+```bash
+pnpm dev:showcase
 ```
 
 In emulator mode, the showcase runs entirely in the browser, keeps the same UI,
 and emulates the server-side mutation, publish, listener, and broadcast stages
 for the Event River. The full-stack API app remains in this repository for
 local development, cloning, and real RiverGen verification.
+
+Hosted showcase users are seeing a browser emulator of the backend path.
+Developers who clone the repository still get the complete RiverGen demo source
+and should use `pnpm dev` for the proper full-stack run.
 
 ## Verify the architecture
 

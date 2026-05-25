@@ -231,6 +231,12 @@ h3 { margin: 0; font-size: 0.95rem; font-weight: 600; letter-spacing: -0.01em; }
   color: var(--text-secondary);
 }
 
+.badge.is-showcase {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent-text);
+}
+
 /* ─── Grids ─────────────────────────────────────────────── */
 
 .rcc-main-grid {
@@ -245,6 +251,36 @@ h3 { margin: 0; font-size: 0.95rem; font-weight: 600; letter-spacing: -0.01em; }
   grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.3fr);
   gap: 16px;
   align-items: start;
+}
+
+.runtime-notice {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-panel);
+  background: var(--accent-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.runtime-notice strong {
+  color: var(--accent-text);
+  font-size: 0.88rem;
+  letter-spacing: -0.01em;
+}
+
+.runtime-notice span {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.runtime-notice code {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--text-primary);
 }
 
 /* ─── Session panel ─────────────────────────────────────── */

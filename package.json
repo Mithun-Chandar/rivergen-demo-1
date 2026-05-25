@@ -20,6 +20,9 @@
   "packageManager": "pnpm@9.12.0",
   "scripts": {
     "dev": "concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
+    "dev:showcase": "node scripts/showcase-runtime.mjs dev",
+    "build:showcase": "node scripts/showcase-runtime.mjs build",
+    "preview:showcase": "node scripts/showcase-runtime.mjs preview",
     "verify": "rivergen verify"
   },
   "devDependencies": {
