@@ -1,0 +1,13 @@
+{
+  "name": "rivergen-demo",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
+    "verify": "rivergen verify"
+  },
+  "devDependencies": {
+    "@rivergen/cli": "*",
+    "concurrently": "^9.0.1"
+  }
+}

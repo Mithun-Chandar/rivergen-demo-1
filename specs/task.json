@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "domain": { "key": "task", "displayName": "Task" },
+  "entity": { "key": "task", "eventPrefix": "task" },
+  "events": [
+    "task.created",
+    "task.updated",
+    "task.deleted",
+    "task.assigned",
+    "task.priority-changed"
+  ],
+  "room": {
+    "template": "project:${projectId}",
+    "visibilityField": "visibility",
+    "privateRoomTemplate": "user:${creatorId}"
+  }
+}

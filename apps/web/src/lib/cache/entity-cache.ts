@@ -1,0 +1,309 @@
+import { QueryClient } from "@tanstack/react-query";
+// Setup: "@rivergen-demo/shared" must export ENTITY_PROJECTIONS from
+// packages/shared/src/entity-projections/_index.ts
+//
+// In a pnpm workspace, ensure packages/shared/package.json has:
+//   { "name": "@rivergen-demo/shared", "exports": { ".": "./src/entity-projections/_index.ts" } }
+// and that packages/shared is a workspace member (pnpm-workspace.yaml or root package.json).
+//
+// To use a different package name set "sharedPackage" in rivergen.config.json.
+import {
+  ENTITY_PROJECTIONS,
+  type EntityProjectionEntry,
+  type QueryKey,
+} from "@rivergen-demo/shared";
+
+import { getFailureMode } from "../failure-mode";
+import { emitLocalTrace, type TraceContextInfo } from "../trace-client";
+
+type CacheEntity = {
+  id?: string | number | null;
+  deletedAt?: string | null;
+} & Record<string, unknown>;
+
+type CacheContext = Record<string, unknown> | undefined;
+
+type CollectionRecord = Record<string, unknown> & {
+  items?: unknown[];
+  [key: string]: unknown;
+};
+
+type TraceAwareContext = Record<string, unknown> & {
+  _trace?: TraceContextInfo;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeKey(key: readonly unknown[]): readonly unknown[] {
+  return key[0] === "realm" ? key.slice(2) : key;
+}
+
+function matchesPrefix(
+  key: readonly unknown[],
+  prefix: readonly unknown[],
+): boolean {
+  if (prefix.length > key.length) return false;
+  return prefix.every((value, index) => key[index] === value);
+}
+
+function toProjectionKeys(value: QueryKey | QueryKey[] | null): QueryKey[] {
+  if (!value) return [];
+  if (Array.isArray(value[0])) return value as QueryKey[];
+  return [value as QueryKey];
+}
+
+function getTraceInfo(context: CacheContext): TraceContextInfo | undefined {
+  if (!isRecord(context)) return undefined;
+  const traceInfo = (context as TraceAwareContext)._trace;
+  return traceInfo;
+}
+
+function emitCacheWriteTrace(
+  detail: string,
+  context: CacheContext,
+  key: QueryKey,
+): void {
+  const traceInfo = getTraceInfo(context);
+  if (!traceInfo) {
+    return;
+  }
+
+  if (
+    traceInfo.eventName === "task.created" &&
+    getFailureMode() === "direct-cache-mutation"
+  ) {
+    return;
+  }
+
+  emitLocalTrace({
+    stage: "cache-write",
+    domain: traceInfo.domain,
+    eventName: traceInfo.eventName,
+    correlationId: traceInfo.correlationId,
+    session: traceInfo.session,
+    payload: traceInfo.payload,
+    status: "ok",
+    detail: `${detail} ${JSON.stringify(key)}`,
+  });
+}
+
+function upsertIntoArray<T>(items: T[], entity: CacheEntity): T[] {
+  const entityId = entity.id;
+  if (entityId === undefined || entityId === null) return items;
+
+  let found = false;
+  const nextItems = items.map((item) => {
+    if (!isRecord(item) || item.id !== entityId) return item;
+    found = true;
+    return { ...item, ...entity } as T;
+  });
+
+  return found ? nextItems : [...items, entity as T];
+}
+
+function removeFromArray<T>(items: T[], entityId: string): T[] {
+  return items.filter((item) => !isRecord(item) || item.id !== entityId);
+}
+
+function isCollectionKey(key: QueryKey): boolean {
+  return key.some((segment) =>
+    [
+      "list",
+      "items",
+      "notifications",
+      "tasks",
+      "projects",
+      "files",
+      "folders",
+      "messages",
+      "channels",
+      "events",
+      "calendars",
+      "users",
+      "boards",
+      "comments",
+      "activity",
+    ].includes(String(segment)),
+  );
+}
+
+function upsertInUnknownData(
+  current: unknown,
+  entity: CacheEntity,
+  key: QueryKey,
+): unknown {
+  if (Array.isArray(current)) return upsertIntoArray(current, entity);
+
+  if (isRecord(current)) {
+    // Look for any array-valued property to upsert into
+    for (const [k, v] of Object.entries(current)) {
+      if (Array.isArray(v)) {
+        return { ...current, [k]: upsertIntoArray(v, entity) };
+      }
+    }
+    if (current.id === entity.id) return { ...current, ...entity };
+    return current;
+  }
+
+  if (current == null) return isCollectionKey(key) ? [entity] : entity;
+  return current;
+}
+
+function deleteFromUnknownData(current: unknown, entityId: string): unknown {
+  if (Array.isArray(current)) return removeFromArray(current, entityId);
+
+  if (isRecord(current)) {
+    for (const [k, v] of Object.entries(current)) {
+      if (Array.isArray(v)) {
+        return { ...current, [k]: removeFromArray(v, entityId) };
+      }
+    }
+    if (current.id === entityId) return undefined;
+  }
+
+  return current;
+}
+
+function updateProjectionKey(
+  queryClient: QueryClient,
+  key: QueryKey,
+  updater: (current: unknown) => unknown,
+): void {
+  let touched = false;
+
+  queryClient.setQueriesData(
+    {
+      predicate: (query) => {
+        const queryKey = query.queryKey as readonly unknown[];
+        return matchesPrefix(normalizeKey(queryKey), key);
+      },
+    },
+    (current) => {
+      touched = true;
+      return updater(current);
+    },
+  );
+
+  if (!touched) {
+    queryClient.setQueryData(key, updater(undefined));
+  }
+}
+
+function invalidateProjectionKeys(
+  queryClient: QueryClient,
+  projectionEntry: EntityProjectionEntry,
+  operation: "onCreate" | "onUpdate" | "onDelete",
+  entity: CacheEntity | string,
+  context?: CacheContext,
+): void {
+  if (operation === "onDelete") {
+    for (const key of projectionEntry.onDelete.invalidate) {
+      queryClient.invalidateQueries({ queryKey: key });
+    }
+    return;
+  }
+
+  for (const projection of projectionEntry[operation].invalidate) {
+    for (const key of toProjectionKeys(projection(entity, context))) {
+      queryClient.invalidateQueries({ queryKey: key });
+    }
+  }
+}
+
+function resolveProjectionEntry(entityType: string): EntityProjectionEntry {
+  const entry = ENTITY_PROJECTIONS[entityType];
+  if (!entry) {
+    throw new Error(
+      `Unknown entity projection: "${entityType}". Register it in packages/shared/src/entity-projections/<entity>.ts`,
+    );
+  }
+  return entry;
+}
+
+export function applyEntityCreate(
+  entityType: string,
+  entity: CacheEntity,
+  context: CacheContext,
+  queryClient: QueryClient,
+): void {
+  const entry = resolveProjectionEntry(entityType);
+  const clientTempId = context?.clientTempId as string | undefined;
+
+  for (const projection of entry.onCreate.required) {
+    for (const key of toProjectionKeys(projection(entity, context))) {
+      updateProjectionKey(queryClient, key, (current) => {
+        const withoutGhost = clientTempId
+          ? deleteFromUnknownData(current, clientTempId)
+          : current;
+        return upsertInUnknownData(withoutGhost, entity, key);
+      });
+      emitCacheWriteTrace("write", context, key);
+    }
+  }
+
+  invalidateProjectionKeys(queryClient, entry, "onCreate", entity, context);
+}
+
+export function applyEntityUpdate(
+  entityType: string,
+  entity: CacheEntity,
+  context: CacheContext,
+  queryClient: QueryClient,
+): void {
+  const entry = resolveProjectionEntry(entityType);
+
+  for (const projection of entry.onUpdate.required) {
+    for (const key of toProjectionKeys(projection(entity, context))) {
+      updateProjectionKey(queryClient, key, (current) =>
+        upsertInUnknownData(current, entity, key),
+      );
+      emitCacheWriteTrace("write", context, key);
+    }
+  }
+
+  invalidateProjectionKeys(queryClient, entry, "onUpdate", entity, context);
+}
+
+export function applyEntityDelete(
+  entityType: string,
+  entityId: string,
+  context: CacheContext,
+  queryClient: QueryClient,
+): void {
+  const entry = resolveProjectionEntry(entityType);
+
+  for (const projection of entry.onDelete.invalidate) {
+    if (typeof projection === "function") {
+      for (const key of toProjectionKeys(
+        (
+          projection as unknown as EntityProjectionEntry["onCreate"]["required"][0]
+        )(entityId, context),
+      )) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
+    } else {
+      queryClient.invalidateQueries({ queryKey: projection });
+    }
+  }
+
+  // Also remove from any cached collections
+  queryClient.setQueriesData({}, (current) =>
+    deleteFromUnknownData(current, entityId),
+  );
+
+  const traceInfo = getTraceInfo(context);
+  if (traceInfo) {
+    emitLocalTrace({
+      stage: "cache-write",
+      domain: traceInfo.domain,
+      eventName: traceInfo.eventName,
+      correlationId: traceInfo.correlationId,
+      session: traceInfo.session,
+      payload: traceInfo.payload,
+      status: "ok",
+      detail: `delete ${entityId}`,
+    });
+  }
+}

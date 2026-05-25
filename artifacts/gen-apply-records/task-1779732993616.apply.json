@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-05-25T18:16:33.616Z",
+  "domainKey": "task",
+  "filesCreated": [
+    "apps/api/src/task/task.router.ts",
+    "apps/api/src/task/task.mutations.ts",
+    "apps/api/src/task/task.broadcast.ts",
+    "apps/api/src/lib/event-bus-listeners/task.listener.ts",
+    "apps/web/src/lib/projections/task-projections.ts",
+    "apps/web/src/hooks/use-task.ts",
+    "apps/api/src/lib/event-factory/schemas/task.ts",
+    "apps/web/src/lib/cache/domain-dispatchers/task.ts",
+    "apps/web/src/providers/ws-bindings/task.ts",
+    "packages/shared/src/entity-projections/task.ts",
+    "apps/web/src/lib/query-keys/task.ts",
+    "apps/web/src/witness/task.witness.ts"
+  ],
+  "upsertTargets": [
+    "apps/api/src/lib/event-factory/schemas.ts",
+    "apps/web/src/lib/query-keys.ts",
+    "apps/web/src/providers/WebSocketProvider.tsx",
+    "apps/web/src/lib/cache/state-cache.ts",
+    "packages/types/src/realtime-events.ts",
+    "packages/shared/src/entity-projections.ts"
+  ],
+  "generatorVersion": "2.0.0-phase1",
+  "specFile": "specs/task.json"
+}
