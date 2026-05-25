@@ -6,6 +6,16 @@ RiverGen is deterministic realtime architecture tooling. This demo makes every
 step of the realtime pipeline visible, testable, and provably correct,
 including what happens when something breaks.
 
+## Repository links
+
+- Demo repository: https://github.com/Mithun-Chandar/rivergen-demo-1
+- Main RiverGen repository: https://github.com/Mithun-Chandar/rivergen
+
+This repository is the demo application for RiverGen. If you want the generator,
+CLI, architecture rules, and the main project source, use the RiverGen
+repository above. If you want the end-to-end demo implementation shown here,
+use this demo repository.
+
 ## What you're looking at
 
 - Two sessions, Alice and Bob, sharing a live task board in one browser page
@@ -14,6 +24,14 @@ including what happens when something breaks.
 - Failure injection, with four toggles that each break one architectural guarantee
 - Witness Console, showing field continuity and projection assertions live
 - A RiverGen-generated task domain that still passes the One River gates
+
+## Relationship to RiverGen
+
+- This demo uses `@rivergen/cli` to scaffold and verify the task domain.
+- The RiverGen architectural rules enforced here come from the main RiverGen
+  repository.
+- Demo-specific UI, API runtime wiring, and observability surfaces live in this
+  repository.
 
 ## Run locally
 
