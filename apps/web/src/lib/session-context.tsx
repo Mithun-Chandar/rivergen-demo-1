@@ -9,7 +9,7 @@ import {
 interface SessionPaneContextValue {
   sessionId: string;
   displayName: string;
-  accent: "blue" | "amber";
+  accent: "alice" | "bob";
   projectId: string;
   setProjectId: Dispatch<SetStateAction<string>>;
 }

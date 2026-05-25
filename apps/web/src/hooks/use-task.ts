@@ -5,6 +5,7 @@ import {
   type UseQueryOptions,
 } from "@tanstack/react-query";
 
+import { demoRuntime, type Task, type TaskInput } from "../lib/runtime";
 import { useSessionPane } from "../lib/session-context";
 import { taskKeys } from "../lib/query-keys";
 
@@ -22,31 +23,6 @@ import { taskKeys } from "../lib/query-keys";
 // TODO: replace the useEffect above with the correct room variable from your route.
 // The room template for this domain is: project:${projectId}
 
-// TODO: import your real Task types once defined
-// import type { Task, TaskInput } from "your-types-package";
-type TaskVisibility = "PUBLIC" | "PRIVATE";
-
-type Task = {
-  id: string;
-  taskId?: string;
-  title: string;
-  projectId: string;
-  creatorId?: string;
-  visibility: TaskVisibility;
-  status: string;
-  priority: string;
-  assigneeId?: string | null;
-  clientTempId?: string | null;
-  createdAt?: string;
-  _isOptimistic?: boolean;
-};
-
-type TaskInput = {
-  title: string;
-  visibility?: TaskVisibility;
-  clientTempId?: string;
-};
-
 // ── useTaskList ────────────────────────────────────────────────────────────────
 export function useTaskList(
   projectId: string,
@@ -56,14 +32,7 @@ export function useTaskList(
 
   return useQuery<Task[]>({
     queryKey: taskKeys.list({ projectId }),
-    queryFn: async () => {
-      const query = new URLSearchParams({ projectId });
-      const res = await fetch(`/api/tasks?${query.toString()}`, {
-        headers: { "x-session-id": sessionId },
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<Task[]>;
-    },
+    queryFn: () => demoRuntime.listTasks(projectId, sessionId),
     ...options,
   });
 }
@@ -74,13 +43,7 @@ export function useTask(id: string, options?: Partial<UseQueryOptions<Task>>) {
 
   return useQuery<Task>({
     queryKey: taskKeys.detail(id),
-    queryFn: async () => {
-      const res = await fetch(`/api/tasks/${id}`, {
-        headers: { "x-session-id": sessionId },
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<Task>;
-    },
+    queryFn: () => demoRuntime.getTask(id, sessionId),
     enabled: !!id,
     ...options,
   });
@@ -91,19 +54,8 @@ export function useCreateTask(projectId: string) {
   const queryClient = useQueryClient();
   const { sessionId } = useSessionPane();
   return useMutation({
-    mutationFn: async (data: TaskInput) => {
-      // LAW: onMutate stamps data.clientTempId before this runs — send data as-is
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId,
-        },
-        body: JSON.stringify({ ...data, projectId }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<Task>;
-    },
+    mutationFn: (data: TaskInput) =>
+      demoRuntime.createTask({ ...data, projectId }, sessionId),
     onMutate: async (data) => {
       // LAW: stamp clientTempId onto data — mutationFn sends data as-is, so the
       // server receives the same ID the ghost uses. Never generate it independently
@@ -157,18 +109,7 @@ export function useUpdateTask(projectId: string) {
           "id" | "taskId" | "projectId" | "createdAt" | "_isOptimistic"
         >
       >;
-    }) => {
-      const res = await fetch(`/api/tasks/${id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-session-id": sessionId,
-        },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<Task>;
-    },
+    }) => demoRuntime.updateTask(id, data, sessionId),
     onMutate: async ({ id, data }) => {
       // Room scope: project:${projectId}
       const listKey = taskKeys.list({ projectId });
@@ -196,13 +137,7 @@ export function useDeleteTask(projectId: string) {
   const queryClient = useQueryClient();
   const { sessionId } = useSessionPane();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/tasks/${id}`, {
-        method: "DELETE",
-        headers: { "x-session-id": sessionId },
-      });
-      if (!res.ok) throw new Error(await res.text());
-    },
+    mutationFn: (id: string) => demoRuntime.deleteTask(id, sessionId),
     onMutate: async (id) => {
       // Room scope: project:${projectId}
       const listKey = taskKeys.list({ projectId });

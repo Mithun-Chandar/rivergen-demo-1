@@ -44,6 +44,19 @@ Open the Vite URL printed in the terminal. On a clean machine it should be
 `http://localhost:5173`; if that port is occupied Vite will choose the next
 available port automatically.
 
+## Showcase deployment
+
+For static hosting such as Vercel, deploy the web app in emulator mode:
+
+```bash
+VITE_RUNTIME_MODE=emulator
+```
+
+In emulator mode, the showcase runs entirely in the browser, keeps the same UI,
+and emulates the server-side mutation, publish, listener, and broadcast stages
+for the Event River. The full-stack API app remains in this repository for
+local development, cloning, and real RiverGen verification.
+
 ## Verify the architecture
 
 ```bash

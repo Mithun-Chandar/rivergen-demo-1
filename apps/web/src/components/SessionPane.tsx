@@ -10,10 +10,11 @@ import {
   WebSocketProvider,
   useWebSocket,
 } from "../providers/WebSocketProvider";
+import { Badge } from "./ui/Badge";
 
 const SESSION_META = {
-  alice: { displayName: "Alice", accent: "blue" as const },
-  bob: { displayName: "Bob", accent: "amber" as const },
+  alice: { displayName: "Alice", accent: "alice" as const },
+  bob: { displayName: "Bob", accent: "bob" as const },
 };
 
 const PROJECT_OPTIONS = [
@@ -45,40 +46,24 @@ function SessionPaneInner() {
   const deferredTasks = useDeferredValue(data as TaskCard[]);
 
   const roomLabel = useMemo(() => `project:${projectId}`, [projectId]);
-  const activeProject =
-    PROJECT_OPTIONS.find((project) => project.id === projectId) ??
-    PROJECT_OPTIONS[0];
-  const visibilityLabel =
-    visibility === "PRIVATE" ? "owner only" : "shared room";
 
   return (
     <section className={`session-panel is-${accent}`}>
-      <header className="panel-header session-header">
-        <div>
+      <header className="panel-header">
+        <div className="panel-header-left">
           <p className="panel-eyebrow">Session</p>
           <h2>{displayName}</h2>
-          <p className="panel-copy">
-            {displayName} can publish into {activeProject.label} and immediately
-            show what shared rooms expose versus what PRIVATE tasks keep local.
-          </p>
         </div>
-        <div className="session-meta-cluster">
-          <span className={`session-pill is-${connected ? "live" : "offline"}`}>
+        <div className="panel-header-right">
+          <Badge variant={connected ? "live" : "offline"}>
             {connected ? "live" : "offline"}
-          </span>
-          <span className="session-pill">{roomLabel}</span>
-          <span className="session-pill">{sessionId}</span>
+          </Badge>
+          <Badge variant="default">{roomLabel}</Badge>
         </div>
       </header>
 
-      <div className="project-toggle-row">
-        <div className="session-block-header">
-          <div>
-            <p className="panel-label">Project Room</p>
-            <strong>{activeProject.label}</strong>
-          </div>
-          <span className="session-chip">switch shared scope</span>
-        </div>
+      <div className="session-block">
+        <p className="session-block-label">Project Room</p>
         <div className="project-toggle-grid">
           {PROJECT_OPTIONS.map((project) => (
             <button
@@ -94,31 +79,22 @@ function SessionPaneInner() {
       </div>
 
       <form
-        className="composer-card"
+        className="session-block composer-card"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!title.trim()) {
-            return;
-          }
-
+          if (!title.trim()) return;
           createTask.mutate({ title: title.trim(), visibility });
           setTitle("");
           setVisibility("PUBLIC");
         }}
       >
-        <div className="session-block-header">
-          <div>
-            <p className="panel-label">Create Task</p>
-            <strong>Publish a new mutation</strong>
-          </div>
-          <span className="session-chip">{visibilityLabel}</span>
-        </div>
+        <p className="session-block-label">Create Task</p>
         <label>
-          <span>Task title</span>
+          <span>Title</span>
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder={`${displayName} creates a task...`}
+            placeholder={`${displayName} creates a task…`}
           />
         </label>
         <label>
@@ -129,65 +105,64 @@ function SessionPaneInner() {
               setVisibility(event.target.value as "PUBLIC" | "PRIVATE")
             }
           >
-            <option value="PUBLIC">PUBLIC</option>
-            <option value="PRIVATE">PRIVATE</option>
+            <option value="PUBLIC">Public</option>
+            <option value="PRIVATE">Private</option>
           </select>
         </label>
         <button
           type="submit"
-          className="submit-button"
+          className="submit-btn"
           disabled={createTask.isPending}
         >
-          {createTask.isPending ? "Creating" : "Create task"}
+          {createTask.isPending ? "Creating…" : "Create Task"}
         </button>
       </form>
 
-      <div className="task-stack">
-        <div className="session-block-header">
-          <div>
-            <p className="panel-label">Visible Tasks</p>
-            <strong>
-              {isLoading
-                ? "Loading room state"
-                : `${deferredTasks.length} task${deferredTasks.length === 1 ? "" : "s"} in view`}
-            </strong>
-          </div>
-          <span className="session-chip">{roomLabel}</span>
+      <div className="session-block">
+        <div className="task-list-header">
+          <p className="session-block-label">Visible Tasks</p>
+          <Badge variant="default">
+            {isLoading ? "…" : deferredTasks.length}
+          </Badge>
         </div>
-        {isLoading ? <div className="task-empty">Loading tasks…</div> : null}
-        {!isLoading && deferredTasks.length === 0 ? (
-          <div className="task-empty">No tasks in {roomLabel}.</div>
-        ) : null}
+        <div className="task-list">
+          {isLoading ? (
+            <div className="task-empty">Loading…</div>
+          ) : deferredTasks.length === 0 ? (
+            <div className="task-empty">No tasks in {roomLabel}</div>
+          ) : null}
 
-        {deferredTasks.map((task) => (
-          <article
-            key={task.id}
-            className={`task-card${task._isOptimistic ? " is-ghost" : ""}`}
-          >
-            <header>
-              <div>
-                <strong>{task.title}</strong>
-                <span>{task.visibility}</span>
+          {deferredTasks.map((task) => (
+            <article
+              key={task.id}
+              className={`task-card${task._isOptimistic ? " is-ghost" : ""}`}
+            >
+              <div className="task-card-header">
+                <span className="task-title">{task.title}</span>
+                {task.creatorId === sessionId ? (
+                  <button
+                    type="button"
+                    className="task-delete-btn"
+                    onClick={() => deleteTask.mutate(task.id)}
+                  >
+                    Delete
+                  </button>
+                ) : null}
               </div>
-              {task.creatorId === sessionId ? (
-                <button
-                  type="button"
-                  onClick={() => deleteTask.mutate(task.id)}
+              <div className="task-meta">
+                <Badge
+                  variant={task.visibility === "PRIVATE" ? "default" : "ok"}
                 >
-                  Delete
-                </button>
-              ) : null}
-            </header>
-            <div className="task-card-meta">
-              <span>{task.id}</span>
-              <span>{task.status}</span>
-              <span>{task.priority}</span>
-              {task._isOptimistic ? (
-                <span className="task-spinner">syncing</span>
-              ) : null}
-            </div>
-          </article>
-        ))}
+                  {task.visibility.toLowerCase()}
+                </Badge>
+                <Badge variant="default">{task.status}</Badge>
+                {task._isOptimistic ? (
+                  <Badge variant="default">syncing…</Badge>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -205,9 +180,7 @@ export function SessionPane({
     () =>
       new QueryClient({
         defaultOptions: {
-          queries: {
-            staleTime: 5_000,
-          },
+          queries: { staleTime: 5_000 },
         },
       }),
   );

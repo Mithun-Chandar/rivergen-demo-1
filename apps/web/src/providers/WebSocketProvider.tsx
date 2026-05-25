@@ -11,12 +11,12 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { io, type Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 
 import { getFailureMode } from "../lib/failure-mode";
+import { demoRuntime, type RuntimeSessionConnection } from "../lib/runtime";
 import { emitLocalTrace, getTraceContextInfo } from "../lib/trace-client";
 import { applyRealtimeEventToCache } from "../lib/cache/state-cache";
-import { getAllWsBindings } from "./ws-bindings/_index";
 
 interface WebSocketContextValue {
   socket: Socket | null;
@@ -29,10 +29,6 @@ interface WebSocketContextValue {
 export const WebSocketContext = createContext<WebSocketContextValue | null>(
   null,
 );
-
-function getSocketUrl(): string {
-  return import.meta.env.VITE_WS_URL?.trim() || "http://localhost:3001";
-}
 
 export function WebSocketProvider({
   children,
@@ -47,23 +43,14 @@ export function WebSocketProvider({
   const [connected, setConnected] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const socketRef = useRef<Socket | null>(null);
-  const previousProjectIdRef = useRef(projectId);
+  const connectionRef = useRef<RuntimeSessionConnection | null>(null);
 
   const reconnect = useCallback(() => {
-    socketRef.current?.connect();
+    connectionRef.current?.reconnect();
   }, []);
 
   useEffect(() => {
-    const socketUrl = getSocketUrl();
-
     setEnabled(true);
-
-    const socket = io(socketUrl, {
-      autoConnect: false,
-      transports: ["websocket"],
-      auth: { sessionId },
-    });
 
     const routeEvent = (eventName: string) => (payload: unknown) => {
       const traceContext = getTraceContextInfo(
@@ -118,57 +105,37 @@ export function WebSocketProvider({
       applyRealtimeEventToCache(eventName, payloadRecord, queryClient);
     };
 
-    // Lifecycle handlers
-    socket.on("connect", () => {
-      setConnected(true);
-      setError(null);
-      socket.emit("join:task", projectId);
+    const connection = demoRuntime.connectSession({
+      sessionId,
+      projectId,
+      onEvent: (eventName, payload) => routeEvent(eventName)(payload),
+      onConnectedChange: (nextConnected) => {
+        setConnected(nextConnected);
+        if (nextConnected) {
+          setError(null);
+        }
+      },
+      onError: (nextError) => {
+        if (nextError) {
+          setConnected(false);
+        }
+        setError(nextError);
+      },
     });
 
-    socket.on("disconnect", () => {
-      setConnected(false);
-    });
-
-    socket.on("connect_error", (socketError: Error) => {
-      setConnected(false);
-      setError(socketError.message || "WebSocket connection failed");
-    });
-
-    // Register all domain event bindings from ws-bindings slices
-    for (const event of getAllWsBindings()) {
-      socket.on(event, routeEvent(event));
-    }
-
-    socket.connect();
-    socketRef.current = socket;
-    previousProjectIdRef.current = projectId;
+    connectionRef.current = connection;
 
     return () => {
-      socket.off();
-      socket.disconnect();
-      socketRef.current = null;
+      connection.disconnect();
+      connectionRef.current = null;
       setEnabled(false);
       setConnected(false);
     };
   }, [projectId, queryClient, sessionId]);
 
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket || !connected) {
-      return;
-    }
-
-    const previousProjectId = previousProjectIdRef.current;
-    if (previousProjectId !== projectId) {
-      socket.emit("leave:task", previousProjectId);
-      socket.emit("join:task", projectId);
-      previousProjectIdRef.current = projectId;
-    }
-  }, [connected, projectId]);
-
   const value = useMemo<WebSocketContextValue>(
     () => ({
-      socket: socketRef.current,
+      socket: connectionRef.current?.socket ?? null,
       connected,
       enabled,
       error,

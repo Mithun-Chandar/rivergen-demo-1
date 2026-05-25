@@ -3,50 +3,46 @@ import { useState } from "react";
 import type { DemoFailureMode } from "@rivergen-demo/shared/river-trace";
 
 import { useFailureMode } from "../lib/failure-mode";
+import { demoRuntime } from "../lib/runtime";
+import { Badge } from "./ui/Badge";
 
 const FAILURE_OPTIONS: Array<{
   mode: Exclude<DemoFailureMode, "none">;
   label: string;
   description: string;
-  witnessCatch: string;
 }> = [
   {
     mode: "skip-projection",
     label: "Skip Projection",
-    description:
-      "The event arrives, the dispatcher fires, and the projection never runs.",
-    witnessCatch: "Layer 3 catches the orphan ghost.",
+    description: "Dispatcher fires — projection never runs",
   },
   {
     mode: "broadcast-leak",
     label: "Broadcast Leak",
-    description: "A PRIVATE task is emitted to the public project room.",
-    witnessCatch: "Layer 3 catches the non-owner delivery leak.",
+    description: "PRIVATE task emitted to public room",
   },
   {
     mode: "missing-field",
     label: "Missing Payload Field",
-    description:
-      "clientTempId is stripped before the task.created event is delivered.",
-    witnessCatch: "Layer 3 catches broken ghost reconciliation.",
+    description: "clientTempId stripped before delivery",
   },
   {
     mode: "direct-cache-mutation",
     label: "Direct Cache Mutation",
-    description:
-      "A bypass write hits setQueryData before the projection authority converges.",
-    witnessCatch: "Layer 3 catches projection-authority violation.",
+    description: "Bypass write hits cache before projection",
   },
 ];
 
 export function FailureInjector() {
   const { mode, setMode } = useFailureMode();
   const [syncing, setSyncing] = useState(false);
-  const modeLabel = syncing
-    ? "syncing"
+
+  const statusLabel = syncing ? "syncing" : mode === "none" ? "healthy" : mode;
+  const statusVariant = syncing
+    ? "default"
     : mode === "none"
-      ? "healthy path"
-      : mode;
+      ? "ok"
+      : "error";
 
   const applyMode = async (next: Exclude<DemoFailureMode, "none">) => {
     const resolvedMode: DemoFailureMode = mode === next ? "none" : next;
@@ -54,11 +50,7 @@ export function FailureInjector() {
     setSyncing(true);
 
     try {
-      await fetch("/api/debug/failure-mode", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: resolvedMode }),
-      });
+      await demoRuntime.setFailureMode(resolvedMode);
     } finally {
       setSyncing(false);
     }
@@ -67,16 +59,12 @@ export function FailureInjector() {
   return (
     <section className="failure-panel">
       <header className="panel-header">
-        <div>
+        <div className="panel-header-left">
           <p className="panel-eyebrow">Failure Injection</p>
-          <h2>Break one guarantee at a time</h2>
-          <p className="panel-copy">
-            Click once to activate a failure. Click the same card again to
-            return to the healthy path before testing the next break.
-          </p>
+          <h2>Break one guarantee</h2>
         </div>
-        <div className="panel-header-actions">
-          <span className="panel-meta">{modeLabel}</span>
+        <div className="panel-header-right">
+          <Badge variant={statusVariant}>{statusLabel}</Badge>
         </div>
       </header>
 
@@ -88,15 +76,14 @@ export function FailureInjector() {
               key={option.mode}
               type="button"
               className={`failure-toggle${active ? " is-active" : ""}`}
-              onClick={() => {
-                void applyMode(option.mode);
-              }}
+              onClick={() => { void applyMode(option.mode); }}
               disabled={syncing}
             >
-              <span className="toggle-mark">{active ? "[x]" : "[ ]"}</span>
-              <strong>{option.label}</strong>
-              <span>{option.description}</span>
-              <span className="toggle-footnote">{option.witnessCatch}</span>
+              <div className="toggle-indicator">
+                <span className="toggle-dot" />
+                <span className="toggle-label">{option.label}</span>
+              </div>
+              <span className="toggle-desc">{option.description}</span>
             </button>
           );
         })}

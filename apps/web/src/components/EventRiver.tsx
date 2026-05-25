@@ -4,25 +4,22 @@ import type {
   RiverTraceEvent,
   RiverTraceStage,
 } from "@rivergen-demo/shared/river-trace";
-import { io } from "socket.io-client";
 
+import { demoRuntime } from "../lib/runtime";
 import { subscribeToLocalTraces } from "../lib/trace-client";
+import { Badge } from "./ui/Badge";
 
-const STAGE_LABELS: Record<RiverTraceStage, string> = {
-  mutation: "01 mutation",
-  publish: "02 publish",
-  listener: "03 listener",
-  broadcast: "04 broadcast",
-  "ws-delivery": "05 ws-delivery",
-  dispatcher: "06 dispatcher",
-  projection: "07 projection",
-  "cache-write": "08 cache-write",
-  witness: "09 witness",
+const STAGE_META: Record<RiverTraceStage, { num: number; name: string }> = {
+  mutation:       { num: 1, name: "mutation" },
+  publish:        { num: 2, name: "publish" },
+  listener:       { num: 3, name: "listener" },
+  broadcast:      { num: 4, name: "broadcast" },
+  "ws-delivery":  { num: 5, name: "ws-recv" },
+  dispatcher:     { num: 6, name: "dispatch" },
+  projection:     { num: 7, name: "project" },
+  "cache-write":  { num: 8, name: "cache" },
+  witness:        { num: 9, name: "witness" },
 };
-
-function getSocketUrl(): string {
-  return import.meta.env.VITE_WS_URL?.trim() || "http://localhost:3001";
-}
 
 export function EventRiver() {
   const [traces, setTraces] = useState<RiverTraceEvent[]>([]);
@@ -31,36 +28,21 @@ export function EventRiver() {
 
   useEffect(() => {
     const appendTrace = (trace: RiverTraceEvent) => {
-      if (trace.stage === "witness" && trace.source === "auto") {
-        return;
-      }
-
+      if (trace.stage === "witness" && trace.source === "auto") return;
       setTraces((current) => [...current.slice(-49), trace]);
     };
 
-    const socket = io(getSocketUrl(), {
-      transports: ["websocket"],
-      auth: { sessionId: "observer" },
-    });
-
-    socket.on("connect", () => {
-      socket.emit("join:debug");
-    });
-    socket.on("river:trace", appendTrace);
-
+    const unsubscribeRuntime = demoRuntime.subscribeToTraces(appendTrace);
     const unsubscribe = subscribeToLocalTraces(appendTrace);
 
     return () => {
       unsubscribe();
-      socket.disconnect();
+      unsubscribeRuntime();
     };
   }, []);
 
   useEffect(() => {
-    if (paused || !viewportRef.current) {
-      return;
-    }
-
+    if (paused || !viewportRef.current) return;
     viewportRef.current.scrollTo({
       top: viewportRef.current.scrollHeight,
       behavior: "smooth",
@@ -79,33 +61,30 @@ export function EventRiver() {
 
     return Array.from(grouped.entries()).map(([correlationId, items]) => ({
       correlationId,
-      items: items.sort((left, right) => left.timestamp - right.timestamp),
+      items: items.sort((a, b) => a.timestamp - b.timestamp),
     }));
   }, [traces]);
 
   return (
     <section className="river-panel">
       <header className="panel-header">
-        <div>
+        <div className="panel-header-left">
           <p className="panel-eyebrow">Event River</p>
-          <h2>Correlation groups in flight</h2>
-          <p className="panel-copy">
-            Read one mutation from server publish to client projection. The
-            center lane should stay quiet on load and only fill when you
-            deliberately trigger work.
-          </p>
+          <h2>Correlation groups</h2>
         </div>
-        <div className="panel-header-actions">
-          <span className="panel-meta">{paused ? "paused" : "auto-scroll"}</span>
-          <span className="panel-meta">{traces.length} traces</span>
+        <div className="panel-header-right">
+          <Badge variant="default">{traces.length} traces</Badge>
         </div>
       </header>
 
-      <div className="river-intro">
+      <div className="river-status-bar">
+        <span className="river-scroll-indicator">
+          {paused ? "paused" : "auto-scroll"}
+        </span>
         <div className="river-legend">
-          <span>Server path 01 → 04</span>
-          <span>Client path 05 → 08</span>
-          <span>Manual witness 09</span>
+          <Badge variant="default">server 1–4</Badge>
+          <Badge variant="default">client 5–8</Badge>
+          <Badge variant="default">witness 9</Badge>
         </div>
       </div>
 
@@ -117,20 +96,16 @@ export function EventRiver() {
       >
         {groups.length === 0 ? (
           <div className="river-empty">
-            <strong>No live activity yet</strong>
-            <span>
-              Create a task from Alice or Bob. Each river group is one
-              correlation id moving through the full One River path.
-            </span>
+            <span className="river-empty-icon">⟳</span>
+            <strong>No activity yet</strong>
+            <span>Create a task from Alice or Bob</span>
           </div>
         ) : (
           groups.map((group) => {
             const lead = group.items[0];
-            const groupStatus = group.items.some(
-              (item) => item.status === "error",
-            )
+            const groupStatus = group.items.some((i) => i.status === "error")
               ? "error"
-              : group.items.some((item) => item.status === "skipped")
+              : group.items.some((i) => i.status === "skipped")
                 ? "skipped"
                 : "ok";
 
@@ -141,42 +116,48 @@ export function EventRiver() {
                 open
               >
                 <summary>
-                  <div className="river-summary-copy">
-                    <strong>{lead.eventName}</strong>
-                    <small>
-                      {group.items.length} stages
-                      {lead.session ? ` · ${lead.session}` : ""}
-                      {lead.room ? ` · ${lead.room}` : ""}
-                    </small>
+                  <div className="river-summary-left">
+                    <span className="river-event-name">{lead.eventName}</span>
+                    {lead.session ? (
+                      <Badge variant={lead.session === "alice" ? "alice" : "bob"}>
+                        {lead.session}
+                      </Badge>
+                    ) : null}
                   </div>
-                  <span className="panel-meta">
-                    {group.correlationId.slice(0, 8)}
-                  </span>
+                  <div className="river-summary-meta">
+                    <Badge variant={groupStatus === "ok" ? "default" : groupStatus}>
+                      {group.items.length} stages
+                    </Badge>
+                    <Badge variant="default">
+                      {group.correlationId.slice(0, 8)}
+                    </Badge>
+                  </div>
                 </summary>
+
                 <div className="river-group-body">
-                  {group.items.map((trace) => (
-                    <article
-                      key={trace.id}
-                      className={`trace-row is-${trace.status}`}
-                      data-stage={trace.stage}
-                    >
-                      <div className="trace-stage">
-                        {STAGE_LABELS[trace.stage]}
-                      </div>
-                      <div className="trace-body">
-                        <p>
+                  {group.items.map((trace) => {
+                    const stage = STAGE_META[trace.stage];
+                    return (
+                      <div
+                        key={trace.id}
+                        className={`trace-row is-${trace.status}`}
+                      >
+                        <div className="trace-stage-dot">
+                          <span className="stage-num">{stage.num}</span>
+                          <span className="stage-name">{stage.name}</span>
+                        </div>
+                        <span className="trace-detail">
                           {trace.detail || trace.eventName}
-                          {trace.session ? ` · ${trace.session}` : ""}
-                          {trace.room ? ` · ${trace.room}` : ""}
-                        </p>
-                        {trace.failureMode ? (
-                          <span className="trace-pill">
-                            {trace.failureMode}
-                          </span>
-                        ) : null}
+                          {trace.failureMode ? (
+                            <>
+                              {" "}
+                              <Badge variant="error">{trace.failureMode}</Badge>
+                            </>
+                          ) : null}
+                        </span>
                       </div>
-                    </article>
-                  ))}
+                    );
+                  })}
                 </div>
               </details>
             );

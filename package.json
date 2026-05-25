@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@rivergen/cli": "*",
-    "concurrently": "^9.0.1"
+    "concurrently": "^9.0.1",
+    "playwright": "^1.60.0"
   }
 }
